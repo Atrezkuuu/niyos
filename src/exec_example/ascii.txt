@@ -1,0 +1,8 @@
+entflag 255;
+var 1;
+equ 255;
+entry;
+print.var;
+sub 1;
+toentry;
+exit;

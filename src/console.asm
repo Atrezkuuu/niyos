@@ -1,17 +1,10 @@
-org 7c00h
+org 500h
 
 start:
-    cli
-    xor ax, ax
-    mov ds, ax
-    mov [boot_drive], dl
-    mov es, ax
-    mov ss, ax
-    mov sp, 7c00h
-    sti
+    cmp ah, 0a1h
+    je console_loop
 
-    mov ax, 0003h
-    int 10h
+    jmp cl_command_execute
 
 console_loop:
     mov ah, 02h
@@ -78,6 +71,18 @@ command_exec:
     je cl_command_execute
 
     mov di, input
+    mov si, shutdown_command
+    mov cx, 4
+    repe cmpsb
+    je shutdown_command_execute
+
+    mov di, input
+    mov si, reboot_command
+    mov cx, 4
+    repe cmpsb
+    je reboot_command_execute
+
+    mov di, input
     mov si, fs_command
     mov cx, 3
     repe cmpsb
@@ -101,6 +106,12 @@ command_exec:
     repe cmpsb
     je delete_command_execute
 
+    mov di, input
+    mov si, exec_command
+    mov cx, 3
+    repe cmpsb
+    je exec_command_execute
+
     pop si
 
 clear_input:
@@ -122,8 +133,6 @@ end_clear_input_loop:
     jmp console_loop
 
 cl_command_execute:
-    mov al, 0cch
-
     mov ax, 0003h
     int 10h
 
@@ -132,17 +141,49 @@ cl_command_execute:
 
     jmp clear_input
 
+shutdown_command_execute:
+    push ax
+
+    mov ax, 5301h
+    xor bx, bx
+    int 15h
+
+    mov ax, 530eh
+    xor bx, bx
+    mov cx, 102h
+    int 15h
+
+    mov ax, 5307h
+    mov bx, 01h
+    mov cx, 03h
+    int 15h
+
+    pop ax
+
+    mov ah, 0e0h
+    jmp niyerror_call
+
+reboot_command_execute:
+    cli
+    mov al, 0FEh
+    out 64h, al
+
+    mov ah, 0e1h
+    jmp niyerror_call
+
 fs_command_execute:
     call split_string
 
     mov ah, 02h
-    mov al, 2
+    mov al, 3
     mov ch, 0
-    mov cl, 2
+    mov cl, 4
     mov dh, 0
-    mov dl, [boot_drive]
-    mov bx, 1000h
+    mov dl, 80h
+    mov bx, 1500h
     int 13h
+
+    jc niyerror_call
 
     push cx
 
@@ -152,19 +193,21 @@ fs_command_execute:
     xor bx, bx
 
     mov ah, 0bh
-    jmp 0000:1000h
+    jmp 0000:1500h
 
 mk_command_execute:
     call split_string
 
     mov ah, 02h
-    mov al, 2
+    mov al, 3
     mov ch, 0
-    mov cl, 2
+    mov cl, 4
     mov dh, 0
-    mov dl, [boot_drive]
-    mov bx, 1000h
+    mov dl, 80h
+    mov bx, 1500h
     int 13h
+
+    jc niyerror_call
 
     push cx
 
@@ -175,19 +218,21 @@ mk_command_execute:
 
     mov di, args
     mov ah, 0ch
-    jmp 0000:1000h
+    jmp 0000:1500h
 
 write_command_execute:
     call split_string
 
     mov ah, 02h
-    mov al, 2
+    mov al, 3
     mov ch, 0
-    mov cl, 2
+    mov cl, 4
     mov dh, 0
-    mov dl, [boot_drive]
-    mov bx, 1000h
+    mov dl, 80h
+    mov bx, 1500h
     int 13h
+
+    jc niyerror_call
 
     push cx
 
@@ -198,19 +243,21 @@ write_command_execute:
 
     mov di, args
     mov ah, 0dh
-    jmp 0000:1000h
+    jmp 0000:1500h
 
 delete_command_execute:
     call split_string
 
     mov ah, 02h
-    mov al, 2
+    mov al, 3
     mov ch, 0
-    mov cl, 2
+    mov cl, 4
     mov dh, 0
-    mov dl, [boot_drive]
-    mov bx, 1000h
+    mov dl, 80h
+    mov bx, 1500h
     int 13h
+
+    jc niyerror_call
 
     push cx
 
@@ -221,7 +268,30 @@ delete_command_execute:
 
     mov di, args
     mov ah, 0ah
-    jmp 0000:1000h
+    jmp 0000:1500h
+
+exec_command_execute:
+    call split_string
+
+    mov ah, 02h
+    mov al, 3
+    mov ch, 0
+    mov cl, 4
+    mov dh, 0
+    mov dl, 80h
+    mov bx, 1500h
+    int 13h
+
+    jc niyerror_call
+
+    xor ax, ax
+    xor cx, cx
+    xor dx, dx
+    xor bx, bx
+
+    mov di, args
+    mov ah, 1ah
+    jmp 0000:1500h
 
 split_string:
     mov si, 0
@@ -250,15 +320,34 @@ split_string_loop2:
 split_string_end:
     ret
 
+niyerror_call:
+    push ax
+
+    mov ah, 02h
+    mov al, 1
+    mov ch, 0
+    mov cl, 7
+    mov dh, 0
+    mov dl, 80h
+    mov bx, 1500h
+    int 13h
+
+    pop ax
+
+    xor bx, bx
+
+    jmp 0000:1500h
+
+shutdown_command db 'shd', 0
+reboot_command db 'rbt', 0
 cl_command db 'cl', 0
 fs_command db 'fs', 0
 mk_command db 'mk '
 write_command db 'write '
 delete_command db 'del '
-boot_drive db 0
+exec_command db 'exec '
 
 input db 21 dup(0)
 args db 10 dup(0)
 
-times(512-2-($-07c00h)) db 0
-db 055h, 0AAh
+times(1024-($-0500h)) db 1
